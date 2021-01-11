@@ -5,6 +5,7 @@ import torch.optim as optim
 import torch
 from torch.autograd import grad, Variable
 from tqdm import tqdm
+import shutil
 
 
 class WaveGan_GP(object):
@@ -104,7 +105,7 @@ class WaveGan_GP(object):
             device
         )  # used to save samples every few epochs
 
-        gan_model_name = "gan_{}.tar".format(model_prefix)
+        gan_model_name = output_dir + "/gan_{}.tar".format(model_prefix)
 
         first_iter = 0
         if take_backup and os.path.isfile(gan_model_name):
@@ -112,6 +113,7 @@ class WaveGan_GP(object):
                 checkpoint = torch.load(gan_model_name)
             else:
                 checkpoint = torch.load(gan_model_name, map_location="cpu")
+
             self.generator.load_state_dict(checkpoint["generator"])
             self.discriminator.load_state_dict(checkpoint["discriminator"])
             self.optimizer_d.load_state_dict(checkpoint["optimizer_d"])
@@ -122,12 +124,14 @@ class WaveGan_GP(object):
             self.g_cost = checkpoint["g_cost"]
 
             first_iter = checkpoint["n_iterations"]
+            print("Restoring from iteration: {}".format(first_iter))
             for i in range(0, first_iter, progress_bar_step_iter_size):
                 progress_bar.update()
             self.generator.eval()
             with torch.no_grad():
                 fake = self.generator(fixed_noise).detach().cpu().numpy()
             save_samples(fake, first_iter)
+
         self.generator.train()
         self.discriminator.train()
         for iter_indx in range(first_iter, n_iterations):
@@ -199,6 +203,7 @@ class WaveGan_GP(object):
                 save_samples(fake, iter_indx)
 
             if take_backup and iter_indx % backup_every_n_iters == 0:
+                print("Taking Backup")
                 saving_dict = {
                     "generator": self.generator.state_dict(),
                     "discriminator": self.discriminator.state_dict(),
@@ -210,6 +215,8 @@ class WaveGan_GP(object):
                     "valid_g_cost": self.valid_g_cost,
                     "g_cost": self.g_cost,
                 }
+                if os.path.isfile(gan_model_name):
+                    shutil.copy(gan_model_name, gan_model_name + "_{}".format(iter_indx))
                 torch.save(saving_dict, gan_model_name)
 
         self.generator.eval()
